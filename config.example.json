@@ -1,0 +1,6 @@
+{
+  "model": "deepseek-flash",
+  "base_url": "https://api.deepseek.com",
+  "max_iterations": 32,
+  "denied_commands": ["rm", "del", "format", "shutdown", "mkfs", "dd"]
+}
