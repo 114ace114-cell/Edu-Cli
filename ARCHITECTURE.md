@@ -1,7 +1,8 @@
 # Architecture
 
 ```
-cmd/shan                         CLI: repl, run, daemon
+main.go                          calls cmd.Execute
+cmd/root.go                      CLI: repl, run, daemon
 internal/config                  JSON config plus environment overrides
 internal/client                  OpenAI-compatible chat completions
 internal/agent                   one completion per turn

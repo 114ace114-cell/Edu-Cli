@@ -26,7 +26,7 @@ func Load(dataDir, workspace string) (Config, error) {
 	if v := os.Getenv("SHAN_WORKSPACE"); v != "" {
 		workspace = v
 	}
-	if v := os.Getenv("SHAN_DATA"); v != "" {
+	if v := os.Getenv("EDU_DATA"); v != "" {
 		dataDir = v
 	}
 	var err error
@@ -66,7 +66,7 @@ func Load(dataDir, workspace string) (Config, error) {
 	if v := os.Getenv("SHAN_WORKSPACE"); v != "" {
 		cfg.Workspace = v
 	}
-	if v := os.Getenv("SHAN_DATA"); v != "" {
+	if v := os.Getenv("EDU_DATA"); v != "" {
 		cfg.DataDir = v
 	}
 	cfg.Workspace, err = filepath.Abs(cfg.Workspace)

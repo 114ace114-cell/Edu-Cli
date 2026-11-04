@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -18,13 +18,14 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-func main() {
+// Execute is the CLI entry. The root main.go calls this and nothing else.
+func Execute() {
 	args := os.Args[1:]
-	cmd := ""
+	name := ""
 	if len(args) > 0 {
-		cmd = args[0]
+		name = args[0]
 	}
-	switch cmd {
+	switch name {
 	case "daemon":
 		addr := flagValue(args[1:], "addr", "127.0.0.1:8787")
 		if err := runDaemon(addr); err != nil {
@@ -33,7 +34,7 @@ func main() {
 	case "run":
 		task := strings.TrimSpace(strings.Join(args[1:], " "))
 		if task == "" {
-			fail(fmt.Errorf("usage: shan run <task>"))
+			fail(fmt.Errorf("usage: edu run <task>"))
 		}
 		if err := runTask(task); err != nil {
 			fail(err)
@@ -55,14 +56,14 @@ func main() {
 func usage() {
 	fmt.Println(`Edu CLI
 
-  shan                      full-screen session (same as shan repl)
-  shan run <task>           one-shot task with the configured model
-  shan daemon [--addr h:p]  HTTP API on 127.0.0.1:8787
-  shan repl                 full-screen session
+  edu                      full-screen session (same as edu repl)
+  edu run <task>           one-shot task with the configured model
+  edu daemon [--addr h:p]  HTTP API on 127.0.0.1:8787
+  edu repl                 full-screen session
 
 Set OPENAI_API_KEY, or api_key in data/config.json, for run, daemon, and repl.
 A local endpoint (localhost or port 11434) does not need a key.
-SHAN_DATA holds sessions and config.`)
+EDU_DATA holds sessions and config.`)
 }
 
 func runTask(task string) error {

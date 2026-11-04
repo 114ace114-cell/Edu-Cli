@@ -15,7 +15,7 @@ func TestLoadReadsAPIKeyFromDataDir(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
 	t.Setenv("OPENAI_BASE_URL", "")
-	t.Setenv("SHAN_DATA", "")
+	t.Setenv("EDU_DATA", "")
 	t.Setenv("SHAN_WORKSPACE", "")
 
 	cfg, err := Load(dir, t.TempDir())
@@ -35,7 +35,7 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	}
 	t.Setenv("OPENAI_API_KEY", "from-env")
 	t.Setenv("OPENAI_MODEL", "other-model")
-	t.Setenv("SHAN_DATA", "")
+	t.Setenv("EDU_DATA", "")
 	t.Setenv("SHAN_WORKSPACE", "")
 
 	cfg, err := Load(dir, t.TempDir())

@@ -16,14 +16,14 @@ shan run / shan daemon
 go test ./...
 ```
 
-`shan` and `shan repl` open the full-screen home view: brand mark, tips, recent sessions, a connected line, and the composer. A pipe falls back to a line reader. `?` lists commands. Ctrl+C twice quits.
+`go run .` and `go run . repl` open the full-screen home view: brand mark, tips, recent sessions, a connected line, and the composer. A pipe falls back to a line reader. `?` lists commands. Ctrl+C twice quits. The root `main.go` only calls `cmd.Execute`.
 
 Live model:
 
 ```bash
 set OPENAI_API_KEY=sk-...
-go run ./cmd/shan run "summarize README.md"
-go run ./cmd/shan daemon
+go run . run "summarize README.md"
+go run . daemon
 ```
 
 Daemon listens on `127.0.0.1:8787`.
