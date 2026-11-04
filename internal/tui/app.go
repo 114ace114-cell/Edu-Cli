@@ -29,13 +29,12 @@ type Options struct {
 	Version   string
 	Connected bool
 	Activity  []Activity
-	// Submit runs one turn. report receives tool name and phase (running, completed).
-	Submit func(text string, report func(name, phase string)) (string, error)
+	// Submit runs one turn and returns the assistant reply.
+	Submit func(text string) (string, error)
 }
 
 type headerTickMsg struct{}
 type spinMsg struct{}
-type toolMsg struct{ name, phase string }
 type doneMsg struct {
 	reply string
 	err   error
@@ -45,7 +44,6 @@ type doneMsg struct {
 // then the same header committed above a composer and status line.
 type Model struct {
 	opt        Options
-	program    *tea.Program
 	state      int
 	width      int
 	height     int
@@ -57,7 +55,6 @@ type Model struct {
 	viewport   viewport.Model
 	textarea   textarea.Model
 	history    string
-	pending    string
 	spin       int
 	started    time.Time
 	sessionID  string
@@ -71,9 +68,7 @@ func Start(opt Options) error {
 	if opt.Agent == "" {
 		opt.Agent = "default"
 	}
-	m := newModel(opt)
-	p := tea.NewProgram(m)
-	m.program = p
+	p := tea.NewProgram(newModel(opt))
 	_, err := p.Run()
 	return err
 }
@@ -133,11 +128,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, headerFrameTick()
 		}
 		return m, m.finishHeader()
-	case toolMsg:
-		if msg.phase == "running" {
-			m.pending = msg.name
-		}
-		return m, nil
 	case spinMsg:
 		if m.state != stateProcessing {
 			return m, nil
@@ -146,7 +136,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, spinTick()
 	case doneMsg:
 		m.state = stateInput
-		m.pending = ""
 		m.textarea.Focus()
 		if msg.err != nil {
 			m.append(styleError().Render("  "+msg.err.Error()) + "\n")
@@ -203,7 +192,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.append(renderUserMessage(text, m.width))
 			m.append("")
 			m.state = stateProcessing
-			m.pending = ""
 			m.started = time.Now()
 			m.relayout()
 			return m, tea.Batch(m.run(text), spinTick())
@@ -222,16 +210,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) run(text string) tea.Cmd {
 	submit := m.opt.Submit
-	p := m.program
 	return func() tea.Msg {
 		if submit == nil {
 			return doneMsg{err: fmt.Errorf("no runner")}
 		}
-		reply, err := submit(text, func(name, phase string) {
-			if p != nil {
-				p.Send(toolMsg{name: name, phase: phase})
-			}
-		})
+		reply, err := submit(text)
 		return doneMsg{reply: reply, err: err}
 	}
 }
@@ -321,9 +304,6 @@ func (m *Model) bottomRegion() string {
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		glyph := frames[m.spin%len(frames)]
 		label := "Thinking"
-		if m.pending != "" {
-			label = m.pending
-		}
 		elapsed := time.Since(m.started).Truncate(time.Second).String()
 		left = " " + lipgloss.NewStyle().Foreground(colorAccent).Render(glyph) + " " + styleDim().Render(label)
 		right = styleDim().Render(m.modelLabel() + " " + elapsed)

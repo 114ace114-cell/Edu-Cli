@@ -9,23 +9,19 @@ import (
 // Config is the process config. The full repo loads YAML via viper
 // (internal/config). JSON is enough to show the same fields.
 type Config struct {
-	Model          string   `json:"model"`
-	BaseURL        string   `json:"base_url"`
-	APIKey         string   `json:"api_key,omitempty"`
-	MaxIterations  int      `json:"max_iterations"`
-	Workspace      string   `json:"workspace"`
-	DataDir        string   `json:"data_dir"`
-	DeniedCommands []string `json:"denied_commands"`
+	Model     string `json:"model"`
+	BaseURL   string `json:"base_url"`
+	APIKey    string `json:"api_key,omitempty"`
+	Workspace string `json:"workspace"`
+	DataDir   string `json:"data_dir"`
 }
 
 // Load reads dataDir/config.json when it exists. An empty dataDir is
 // <workspace>/data, which is where `shan run` looks. Environment wins over the file.
 func Load(dataDir, workspace string) (Config, error) {
 	cfg := Config{
-		Model:          "gpt-4o-mini",
-		BaseURL:        "https://api.openai.com/v1",
-		MaxIterations:  12,
-		DeniedCommands: []string{"rm", "del", "format", "shutdown", "mkfs", "dd"},
+		Model:   "gpt-4o-mini",
+		BaseURL: "https://api.openai.com/v1",
 	}
 	if v := os.Getenv("SHAN_WORKSPACE"); v != "" {
 		workspace = v
@@ -80,9 +76,6 @@ func Load(dataDir, workspace string) (Config, error) {
 	cfg.DataDir, err = filepath.Abs(cfg.DataDir)
 	if err != nil {
 		return Config{}, err
-	}
-	if cfg.MaxIterations <= 0 {
-		cfg.MaxIterations = 12
 	}
 	return cfg, nil
 }

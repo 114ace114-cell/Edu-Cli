@@ -8,7 +8,7 @@ import (
 
 func TestLoadReadsAPIKeyFromDataDir(t *testing.T) {
 	dir := t.TempDir()
-	body := []byte(`{"model":"deepseek-flash","base_url":"https://api.deepseek.com","api_key":"sk-test","max_iterations":32}`)
+	body := []byte(`{"model":"deepseek-flash","base_url":"https://api.deepseek.com","api_key":"sk-test"}`)
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -24,9 +24,6 @@ func TestLoadReadsAPIKeyFromDataDir(t *testing.T) {
 	}
 	if cfg.Model != "deepseek-flash" || cfg.BaseURL != "https://api.deepseek.com" || cfg.APIKey != "sk-test" {
 		t.Fatalf("file config not applied: %+v", cfg)
-	}
-	if cfg.MaxIterations != 32 {
-		t.Fatalf("max_iterations = %d", cfg.MaxIterations)
 	}
 }
 

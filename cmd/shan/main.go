@@ -10,13 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kocoro/skeleton/internal/audit"
 	"github.com/kocoro/skeleton/internal/client"
 	"github.com/kocoro/skeleton/internal/config"
 	"github.com/kocoro/skeleton/internal/daemon"
-	"github.com/kocoro/skeleton/internal/hooks"
 	"github.com/kocoro/skeleton/internal/session"
-	"github.com/kocoro/skeleton/internal/skills"
 	"github.com/kocoro/skeleton/internal/tui"
 	"github.com/mattn/go-isatty"
 )
@@ -28,10 +25,6 @@ func main() {
 		cmd = args[0]
 	}
 	switch cmd {
-	case "demo":
-		if err := runDemo(); err != nil {
-			fail(err)
-		}
 	case "daemon":
 		addr := flagValue(args[1:], "addr", "127.0.0.1:8787")
 		if err := runDaemon(addr); err != nil {
@@ -63,32 +56,13 @@ func usage() {
 	fmt.Println(`edu coding agent
 
   shan                      full-screen session (same as shan repl)
-  shan demo                 offline scripted coding task
   shan run <task>           one-shot task with the configured model
   shan daemon [--addr h:p]  HTTP API on 127.0.0.1:8787
   shan repl                 full-screen session
 
 Set OPENAI_API_KEY, or api_key in data/config.json, for run, daemon, and repl.
 A local endpoint (localhost or port 11434) does not need a key.
-SHAN_WORKSPACE is the tool root. SHAN_DATA holds sessions and the audit log.`)
-}
-
-func runDemo() error {
-	workspace, err := os.MkdirTemp("", "shan-demo-")
-	if err != nil {
-		return err
-	}
-	data := filepath.Join(workspace, "data")
-	runner, err := buildRunner(workspace, data, client.DemoScript())
-	if err != nil {
-		return err
-	}
-	result, err := runner.RunAgent(daemon.Request{Text: "change greet and write proof.txt"}, nil)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("workspace: %s\nsession: %s\nreply: %s\n", workspace, result.SessionID, result.Reply)
-	return nil
+SHAN_DATA holds sessions and config.`)
 }
 
 func runTask(task string) error {
@@ -96,7 +70,7 @@ func runTask(task string) error {
 	if err != nil {
 		return err
 	}
-	result, err := runner.RunAgent(daemon.Request{Text: task}, nil)
+	result, err := runner.RunAgent(daemon.Request{Text: task})
 	if err != nil {
 		return err
 	}
@@ -128,7 +102,7 @@ func runRepl() error {
 	}
 	if !isatty.IsTerminal(os.Stdin.Fd()) && !isatty.IsCygwinTerminal(os.Stdin.Fd()) {
 		if cfg.APIKey == "" && !localEndpoint(cfg.BaseURL) {
-			return fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json, or run: shan demo")
+			return fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json")
 		}
 		return lineRepl(runner)
 	}
@@ -146,11 +120,11 @@ func runRepl() error {
 		Version:   "dev",
 		Connected: endpointReachable(cfg.BaseURL),
 		Activity:  activity,
-		Submit: func(text string, report func(name, phase string)) (string, error) {
+		Submit: func(text string) (string, error) {
 			if cfg.APIKey == "" && !localEndpoint(cfg.BaseURL) {
 				return "", fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json")
 			}
-			result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: sessionID}, reportEvents{fn: report})
+			result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: sessionID})
 			if result.SessionID != "" {
 				sessionID = result.SessionID
 			}
@@ -165,7 +139,7 @@ func runRepl() error {
 func lineRepl(runner *daemon.Runner) error {
 	var sessionID string
 	return tui.Run(os.Stdin, os.Stdout, func(text string) (string, error) {
-		result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: sessionID}, nil)
+		result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: sessionID})
 		if result.SessionID != "" {
 			sessionID = result.SessionID
 		}
@@ -174,16 +148,6 @@ func lineRepl(runner *daemon.Runner) error {
 		}
 		return result.Reply, nil
 	})
-}
-
-type reportEvents struct {
-	fn func(name, phase string)
-}
-
-func (r reportEvents) OnToolStatus(name, phase string) {
-	if r.fn != nil {
-		r.fn(name, phase)
-	}
 }
 
 func localEndpoint(raw string) bool {
@@ -231,7 +195,7 @@ func liveRunner() (*daemon.Runner, error) {
 		return nil, err
 	}
 	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json, or run: shan demo")
+		return nil, fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json")
 	}
 	return buildRunner(cfg.Workspace, cfg.DataDir, &client.OpenAI{
 		BaseURL: cfg.BaseURL,
@@ -251,21 +215,10 @@ func buildRunner(workspace, data string, llm client.LLMClient) (*daemon.Runner, 
 	if err != nil {
 		return nil, err
 	}
-	logger, err := audit.New(data)
-	if err != nil {
-		return nil, err
-	}
-	loaded, err := skills.Load(data)
-	if err != nil {
-		return nil, err
-	}
 	return &daemon.Runner{
 		Cfg:      cfg,
 		LLM:      llm,
 		Sessions: store,
-		Skills:   loaded,
-		Hooks:    &hooks.Runner{},
-		Audit:    logger,
 	}, nil
 }
 

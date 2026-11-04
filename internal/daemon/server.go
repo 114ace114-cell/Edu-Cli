@@ -85,22 +85,12 @@ func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 		s.handleMessageSSE(w, req)
 		return
 	}
-	result, err := s.runner.RunAgent(req, nil)
+	result, err := s.runner.RunAgent(req)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "session_id": result.SessionID})
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
-}
-
-type sseEvents struct {
-	w http.ResponseWriter
-	f http.Flusher
-}
-
-func (e sseEvents) OnToolStatus(name, phase string) {
-	writeSSE(e.w, "tool_status", map[string]string{"type": "tool_status", "tool": name, "phase": phase})
-	e.f.Flush()
 }
 
 func (s *Server) handleMessageSSE(w http.ResponseWriter, req Request) {
@@ -111,7 +101,7 @@ func (s *Server) handleMessageSSE(w http.ResponseWriter, req Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	result, err := s.runner.RunAgent(req, sseEvents{w: w, f: flusher})
+	result, err := s.runner.RunAgent(req)
 	if err != nil {
 		writeSSE(w, "error", map[string]string{"type": "error", "error": err.Error()})
 		flusher.Flush()

@@ -30,11 +30,14 @@ func (o *OpenAI) Complete(req Request) (Message, error) {
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
-	body, err := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"model":    model,
 		"messages": wireMessages(req.Messages),
-		"tools":    wireTools(req.Tools),
-	})
+	}
+	if len(req.Tools) > 0 {
+		payload["tools"] = wireTools(req.Tools)
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return Message{}, err
 	}
