@@ -1,4 +1,4 @@
-// Package tui draws the Kocoro CLI home screen (Start) and keeps a line
+// Package tui draws the Edu CLI home screen (Start) and keeps a line
 // reader (Run) for pipes and tests. The full production UI is internal/tui.
 package tui
 

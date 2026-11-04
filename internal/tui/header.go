@@ -118,7 +118,7 @@ func renderStartupHeader(frame, width int, version, modelTier, endpoint, cwd str
 
 	bdr := lipgloss.NewStyle().Foreground(borderColor)
 	var sb strings.Builder
-	titlePart := "─ Kocoro CLI "
+	titlePart := "─ Edu CLI "
 	remaining := innerWidth - lipgloss.Width(titlePart)
 	if remaining < 0 {
 		remaining = 0

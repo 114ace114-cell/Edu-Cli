@@ -53,7 +53,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`edu coding agent
+	fmt.Println(`Edu CLI
 
   shan                      full-screen session (same as shan repl)
   shan run <task>           one-shot task with the configured model
@@ -92,11 +92,12 @@ func runRepl() error {
 	if err != nil {
 		return err
 	}
-	runner, err := buildRunner(cfg.Workspace, cfg.DataDir, &client.OpenAI{
+	llm := &client.OpenAI{
 		BaseURL: cfg.BaseURL,
 		APIKey:  cfg.APIKey,
 		Model:   cfg.Model,
-	})
+	}
+	runner, err := buildRunner(cfg.Workspace, cfg.DataDir, llm)
 	if err != nil {
 		return err
 	}
@@ -120,6 +121,19 @@ func runRepl() error {
 		Version:   "dev",
 		Connected: endpointReachable(cfg.BaseURL),
 		Activity:  activity,
+		Models: func() []tui.ModelChoice {
+			rows := make([]tui.ModelChoice, 0, 8)
+			for _, m := range client.DeepSeekModels() {
+				rows = append(rows, tui.ModelChoice{Name: m.Name, Detail: m.Detail})
+			}
+			for _, m := range client.OllamaModels("http://127.0.0.1:11434") {
+				rows = append(rows, tui.ModelChoice{Name: m.Name, Detail: m.Detail})
+			}
+			return rows
+		},
+		ApplyModel: func(name string) (string, error) {
+			return llm.Use(name), nil
+		},
 		Submit: func(text string) (string, error) {
 			if cfg.APIKey == "" && !localEndpoint(cfg.BaseURL) {
 				return "", fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json")

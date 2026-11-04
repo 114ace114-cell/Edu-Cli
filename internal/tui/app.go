@@ -20,6 +20,12 @@ const (
 
 const inputBorderOverhead = 3
 
+// ModelChoice is one /model row. Detail is optional, such as an Ollama size.
+type ModelChoice struct {
+	Name   string
+	Detail string
+}
+
 // Options is the home screen plus the runner callback.
 type Options struct {
 	Agent     string
@@ -31,6 +37,10 @@ type Options struct {
 	Activity  []Activity
 	// Submit runs one turn and returns the assistant reply.
 	Submit func(text string) (string, error)
+	// Models lists DeepSeek ids plus any local Ollama tags. Nil means DeepSeek only.
+	Models func() []ModelChoice
+	// ApplyModel retargets later turns. It returns the endpoint now in use.
+	ApplyModel func(name string) (endpoint string, err error)
 }
 
 type headerTickMsg struct{}
@@ -68,7 +78,7 @@ func Start(opt Options) error {
 	if opt.Agent == "" {
 		opt.Agent = "default"
 	}
-	p := tea.NewProgram(newModel(opt))
+	p := tea.NewProgram(newModel(opt), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }
@@ -76,7 +86,7 @@ func Start(opt Options) error {
 func newModel(opt Options) *Model {
 	width := 80
 	ta := textarea.New()
-	ta.Placeholder = "Ask Kocoro anything…"
+	ta.Placeholder = "Ask Edu anything…"
 	promptStyle := lipgloss.NewStyle().Foreground(colorInfo)
 	ta.SetPromptFunc(2, func(lineIdx int) string {
 		if lineIdx == 0 {
@@ -166,6 +176,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.state != stateStartup && m.scrollTranscript(msg) {
+			return m, nil
+		}
 		if m.state != stateInput {
 			return m, nil
 		}
@@ -188,6 +201,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.relayout()
 				return m, nil
 			}
+			if strings.HasPrefix(text, "/model") {
+				m.help = false
+				m.append(renderUserMessage(text, m.width))
+				m.append(m.modelCommand(text))
+				m.append("")
+				return m, nil
+			}
 			m.help = false
 			m.append(renderUserMessage(text, m.width))
 			m.append("")
@@ -199,6 +219,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
 		return m, cmd
+	case tea.MouseMsg:
+		if m.state == stateStartup {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
 	}
 	if m.state == stateInput {
 		var cmd tea.Cmd
@@ -206,6 +233,86 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// scrollTranscript moves the conversation pane. Up and Down do this only
+// when the composer is empty, so typed lines stay in the input box.
+func (m *Model) scrollTranscript(msg tea.KeyMsg) bool {
+	switch msg.Type {
+	case tea.KeyPgUp:
+		m.viewport.PageUp()
+	case tea.KeyPgDown:
+		m.viewport.PageDown()
+	case tea.KeyHome:
+		m.viewport.GotoTop()
+	case tea.KeyEnd:
+		m.viewport.GotoBottom()
+	case tea.KeyUp:
+		if m.state == stateProcessing || strings.TrimSpace(m.textarea.Value()) == "" {
+			m.viewport.LineUp(1)
+		} else {
+			return false
+		}
+	case tea.KeyDown:
+		if m.state == stateProcessing || strings.TrimSpace(m.textarea.Value()) == "" {
+			m.viewport.LineDown(1)
+		} else {
+			return false
+		}
+	default:
+		return false
+	}
+	return true
+}
+
+func (m *Model) modelCommand(text string) string {
+	fields := strings.Fields(text)
+	if len(fields) >= 2 {
+		name := strings.Join(fields[1:], " ")
+		if m.opt.ApplyModel == nil {
+			return "  /model is not wired to a client"
+		}
+		endpoint, err := m.opt.ApplyModel(name)
+		if err != nil {
+			return "  " + err.Error()
+		}
+		m.opt.Model = strings.TrimPrefix(strings.TrimPrefix(name, "ollama/"), "deepseek/")
+		if endpoint != "" {
+			m.opt.Endpoint = endpoint
+		}
+		return "  Switched to " + m.modelLabel()
+	}
+	return formatModelList(m.modelChoices(), m.opt.Model)
+}
+
+func (m *Model) modelChoices() []ModelChoice {
+	if m.opt.Models != nil {
+		return m.opt.Models()
+	}
+	return []ModelChoice{
+		{Name: "deepseek-chat"},
+		{Name: "deepseek-reasoner"},
+		{Name: "deepseek-flash"},
+	}
+}
+
+func formatModelList(choices []ModelChoice, current string) string {
+	current = strings.TrimPrefix(strings.TrimPrefix(current, "ollama/"), "deepseek/")
+	var b strings.Builder
+	b.WriteString("Available models:\n")
+	for _, c := range choices {
+		mark := "  "
+		if c.Name == current {
+			mark = "→ "
+		}
+		line := mark + c.Name
+		if c.Detail != "" {
+			line += " (" + c.Detail + ")"
+		}
+		b.WriteString(line + "\n")
+	}
+	b.WriteString("Use /model <name> to switch")
+	return b.String()
 }
 
 func (m *Model) run(text string) tea.Cmd {
@@ -282,7 +389,7 @@ func (m *Model) View() string {
 func (m *Model) bottomRegion() string {
 	var sb strings.Builder
 	if m.help && m.state == stateInput {
-		sb.WriteString(styleDim().Render("  ? toggle commands    exit leave    Ctrl+C twice quit"))
+		sb.WriteString(styleDim().Render("  ? toggle commands    PgUp/PgDn scroll    exit leave    Ctrl+C twice quit"))
 		sb.WriteString("\n")
 	}
 	switch m.state {
@@ -318,6 +425,9 @@ func (m *Model) modelLabel() string {
 		model = "gpt-4o-mini"
 	}
 	ep := strings.ToLower(m.opt.Endpoint)
+	if strings.Contains(ep, "deepseek") && !strings.Contains(model, "/") {
+		return "deepseek/" + model
+	}
 	if (strings.Contains(ep, "11434") || strings.Contains(ep, "ollama")) && !strings.Contains(model, "/") {
 		return "ollama/" + model
 	}
@@ -355,8 +465,8 @@ func wrapReply(text string, width int) string {
 
 func renderUserMessage(text string, width int) string {
 	style := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#E6EEF8")).
-		Background(lipgloss.Color("#243447")).
+		Foreground(lipgloss.Color("#ECFDF5")).
+		Background(lipgloss.Color("#14532D")).
 		Bold(true).
 		Padding(0, 1)
 	if width > 4 {

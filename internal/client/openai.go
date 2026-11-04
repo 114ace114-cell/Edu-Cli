@@ -7,25 +7,65 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 // OpenAI is a chat-completions client. Stand-in for internal/client/gateway.go.
 type OpenAI struct {
+	mu      sync.RWMutex
 	BaseURL string
 	APIKey  string
 	Model   string
 	HTTP    *http.Client
 }
 
+func (o *OpenAI) snapshot() (base, key, model string, hc *http.Client) {
+	if o == nil {
+		return "", "", "", nil
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.BaseURL, o.APIKey, o.Model, o.HTTP
+}
+
+// Use points later completions at another model. A DeepSeek id uses the DeepSeek
+// API. Any other name is treated as a local Ollama tag.
+func (o *OpenAI) Use(model string) (baseURL string) {
+	model = strings.TrimSpace(model)
+	model = strings.TrimPrefix(model, "ollama/")
+	model = strings.TrimPrefix(model, "deepseek/")
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.Model = model
+	if isDeepSeekModel(model) {
+		if !strings.Contains(strings.ToLower(o.BaseURL), "deepseek.com") {
+			o.BaseURL = "https://api.deepseek.com"
+		}
+	} else if model != "" {
+		o.BaseURL = "http://127.0.0.1:11434/v1"
+	}
+	return o.BaseURL
+}
+
+func isDeepSeekModel(model string) bool {
+	switch model {
+	case "deepseek-chat", "deepseek-reasoner", "deepseek-flash":
+		return true
+	default:
+		return strings.HasPrefix(model, "deepseek-")
+	}
+}
+
 func (o *OpenAI) Complete(req Request) (Message, error) {
-	base := strings.TrimRight(o.BaseURL, "/")
+	base, key, configured, hc := o.snapshot()
+	base = strings.TrimRight(base, "/")
 	if base == "" {
 		base = "https://api.openai.com/v1"
 	}
 	model := req.Model
 	if model == "" {
-		model = o.Model
+		model = configured
 	}
 	if model == "" {
 		model = "gpt-4o-mini"
@@ -46,10 +86,9 @@ func (o *OpenAI) Complete(req Request) (Message, error) {
 		return Message{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	if o.APIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+o.APIKey)
+	if key != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+key)
 	}
-	hc := o.HTTP
 	if hc == nil {
 		hc = &http.Client{Timeout: 90 * time.Second}
 	}

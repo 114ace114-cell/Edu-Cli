@@ -2,17 +2,16 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// Dark-terminal palette matching internal/tui/theme.go. The full TUI probes
-// the background and swaps AdaptiveColor; this screen is the dark look from
-// the Kocoro CLI home frame.
+// Dark-terminal palette. Accent and info are both green so the frame,
+// prompt, and status line share one look.
 var (
 	colorDim       = lipgloss.Color("245")
 	colorSecondary = lipgloss.Color("252")
 	colorFaint     = lipgloss.Color("237")
 	colorError     = lipgloss.Color("196")
 	colorWarn      = lipgloss.Color("214")
-	colorAccent    = lipgloss.Color("#FF5C8A")
-	colorInfo      = lipgloss.Color("39")
+	colorAccent    = lipgloss.Color("#22C55E")
+	colorInfo      = lipgloss.Color("#86EFAC")
 )
 
 func styleDim() lipgloss.Style       { return lipgloss.NewStyle().Foreground(colorDim) }

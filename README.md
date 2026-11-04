@@ -42,6 +42,7 @@ Environment:
 | `OPENAI_API_KEY` | bearer token; overrides `api_key` in `data/config.json` |
 | `OPENAI_BASE_URL` | overrides `base_url`; default `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | overrides `model`; default `gpt-4o-mini` |
+| `/model` | lists DeepSeek (`deepseek-chat`, `deepseek-reasoner`, `deepseek-flash`) and local Ollama tags. `/model deepseek-chat` switches the next turn to DeepSeek |
 | `SHAN_WORKSPACE` | process workspace, default is the working directory |
 | `SHAN_DATA` | sessions and config |
 
