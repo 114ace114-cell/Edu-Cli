@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/kocoro/skeleton/internal/debuglog"
 )
 
 // Config is the process config. The full repo loads YAML via viper
@@ -77,5 +79,6 @@ func Load(dataDir, workspace string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	debuglog.Printf("config: %+v", cfg)
 	return cfg, nil
 }

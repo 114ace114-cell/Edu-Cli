@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"os"
 	"strings"
 
 	"github.com/kocoro/skeleton/internal/client"
@@ -23,8 +24,19 @@ func (l *Loop) Run(userText string, history []client.Message) (string, error) {
 	if err != nil {
 		debuglog.Printf("memory: %v", err)
 	}
+	eduDir := os.Getenv("EDU_DATA")
+	if eduDir == "" {
+		eduDir = "data"
+	}
+	loaded, err := instructions.LoadInstructions(eduDir, ".edu", 4000)
+	if err != nil {
+		debuglog.Printf("instructions: %v", err)
+	}
+	cwd, _ := os.Getwd()
 	systemPrompt := prompt.BuildSystemPrompt(prompt.PromptOptions{
-		Memory: memory,
+		Memory:       memory,
+		Instructions: loaded,
+		CWD:          cwd,
 	})
 
 	l.Messages = append([]client.Message{}, history...)
