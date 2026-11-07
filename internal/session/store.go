@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kocoro/skeleton/internal/client"
+	"github.com/kocoro/edu-cli/internal/client"
 )
 
 // Session is the durable transcript. The full store is internal/session

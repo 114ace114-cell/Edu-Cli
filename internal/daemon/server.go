@@ -35,7 +35,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":       "ok",
 		"workspace":    s.runner.Cfg.Workspace,
-		"capabilities": []string{"skeleton_v1"},
+		"capabilities": []string{"edu_cli_v1"},
 	})
 }
 

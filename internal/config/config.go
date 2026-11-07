@@ -5,27 +5,31 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kocoro/skeleton/internal/debuglog"
+	"github.com/kocoro/edu-cli/internal/debuglog"
+	"github.com/kocoro/edu-cli/internal/mcp"
 )
 
 // Config is the process config. The full repo loads YAML via viper
 // (internal/config). JSON is enough to show the same fields.
 type Config struct {
-	Model     string `json:"model"`
-	BaseURL   string `json:"base_url"`
-	APIKey    string `json:"api_key,omitempty"`
-	Workspace string `json:"workspace"`
-	DataDir   string `json:"data_dir"`
+	Model      string                      `json:"model"`
+	BaseURL    string                      `json:"base_url"`
+	APIKey     string                      `json:"api_key,omitempty"`
+	Workspace  string                      `json:"workspace"`
+	DataDir    string                      `json:"data_dir"`
+	MCPServers map[string]mcp.ServerConfig `json:"mcp_servers"`
 }
 
 // Load reads dataDir/config.json when it exists. An empty dataDir is
-// <workspace>/data, which is where `shan run` looks. Environment wins over the file.
+// <workspace>/data, which is where `edu run` looks. Environment wins over the file.
 func Load(dataDir, workspace string) (Config, error) {
 	cfg := Config{
 		Model:   "gpt-4o-mini",
 		BaseURL: "https://api.openai.com/v1",
 	}
-	if v := os.Getenv("SHAN_WORKSPACE"); v != "" {
+	if v := os.Getenv("EDU_WORKSPACE"); v != "" {
+		workspace = v
+	} else if v := os.Getenv("SHAN_WORKSPACE"); v != "" {
 		workspace = v
 	}
 	if v := os.Getenv("EDU_DATA"); v != "" {
@@ -65,7 +69,9 @@ func Load(dataDir, workspace string) (Config, error) {
 	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 		cfg.APIKey = v
 	}
-	if v := os.Getenv("SHAN_WORKSPACE"); v != "" {
+	if v := os.Getenv("EDU_WORKSPACE"); v != "" {
+		cfg.Workspace = v
+	} else if v := os.Getenv("SHAN_WORKSPACE"); v != "" {
 		cfg.Workspace = v
 	}
 	if v := os.Getenv("EDU_DATA"); v != "" {

@@ -1,4 +1,12 @@
 {
   "model": "deepseek-flash",
-  "base_url": "https://api.deepseek.com"
+  "base_url": "https://api.deepseek.com",
+  "mcp_servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "context": "Filesystem tools for the workspace.",
+      "disabled": true
+    }
+  }
 }

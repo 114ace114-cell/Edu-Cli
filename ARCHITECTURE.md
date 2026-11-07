@@ -1,4 +1,4 @@
-# Architecture
+# Edu CLI — Architecture
 
 ```
 main.go                          calls cmd.Execute
@@ -18,4 +18,4 @@ internal/tui                     home screen and composer
 3. `runner.RunAgent` loads the session, calls the model once, and saves the transcript.
 4. The HTTP handler returns JSON, or SSE when the client asks for `text/event-stream`.
 
-One-shot `shan run` calls the same `runner.RunAgent`.
+One-shot `edu run` calls the same `runner.RunAgent`.

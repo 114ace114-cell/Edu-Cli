@@ -1,12 +1,12 @@
-# edu coding agent
+# Edu CLI
 
-Local CLI and daemon that send each turn to an OpenAI-compatible model and save the transcript.
+Local CLI and HTTP daemon: chat with an OpenAI-compatible model, run tools and MCP, and save transcripts under `data/`.
 
 ```
-shan run / shan daemon
+edu run / edu daemon
   -> config
   -> daemon router + runner
-  -> one model call
+  -> agent loop (tools + MCP)
   -> session store
 ```
 
@@ -43,7 +43,18 @@ Environment:
 | `OPENAI_BASE_URL` | overrides `base_url`; default `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | overrides `model`; default `gpt-4o-mini` |
 | `/model` | lists DeepSeek (`deepseek-chat`, `deepseek-reasoner`, `deepseek-flash`) and local Ollama tags. `/model deepseek-chat` switches the next turn to DeepSeek |
-| `SHAN_WORKSPACE` | process workspace, default is the working directory |
-| `SHAN_DATA` | sessions and config |
+| `EDU_WORKSPACE` | process workspace; default is the working directory |
+| `EDU_DATA` | sessions and config directory (default `<workspace>/data`) |
 
-Copy `config.example.json` to `data/config.json` to set `model`, `base_url`, and `api_key`. `data/` is gitignored. The checked-in example targets DeepSeek (`deepseek-flash` at `https://api.deepseek.com`). Environment variables still override the file.
+Copy `config.example.json` to `data/config.json` to set `model`, `base_url`, `api_key`, and optional `mcp_servers`. `data/` is gitignored. The checked-in example targets DeepSeek (`deepseek-flash` at `https://api.deepseek.com`). Environment variables still override the file.
+
+## Git remote
+
+This project’s Go module is `github.com/kocoro/edu-cli`. Host the git repo as **edu-cli** (or any name you prefer) and point `origin` at it:
+
+```bash
+git remote add origin <your-clone-url>
+git push -u origin master
+```
+
+On Cursor-hosted git (`origin.cursor.com`), use the [origin CLI](https://cursor.com/codebase) from macOS/Linux or WSL: `origin repo create edu-cli`, then add the printed URL as `origin`.

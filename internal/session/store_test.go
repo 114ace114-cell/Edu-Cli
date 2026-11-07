@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/kocoro/skeleton/internal/client"
+	"github.com/kocoro/edu-cli/internal/client"
 )
 
 func TestSaveAndLoad(t *testing.T) {

@@ -10,11 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kocoro/skeleton/internal/client"
-	"github.com/kocoro/skeleton/internal/config"
-	"github.com/kocoro/skeleton/internal/daemon"
-	"github.com/kocoro/skeleton/internal/session"
-	"github.com/kocoro/skeleton/internal/tui"
+	"github.com/kocoro/edu-cli/internal/client"
+	"github.com/kocoro/edu-cli/internal/config"
+	"github.com/kocoro/edu-cli/internal/daemon"
+	"github.com/kocoro/edu-cli/internal/mcp"
+	"github.com/kocoro/edu-cli/internal/session"
+	"github.com/kocoro/edu-cli/internal/tools"
+	"github.com/kocoro/edu-cli/internal/tui"
 	"github.com/mattn/go-isatty"
 )
 
@@ -71,6 +73,7 @@ func runTask(task string) error {
 	if err != nil {
 		return err
 	}
+	defer runner.Close()
 	result, err := runner.RunAgent(daemon.Request{Text: task})
 	if err != nil {
 		return err
@@ -84,6 +87,7 @@ func runDaemon(addr string) error {
 	if err != nil {
 		return err
 	}
+	defer runner.Close()
 	fmt.Fprintf(os.Stderr, "listening on http://%s\n", addr)
 	return http.ListenAndServe(addr, daemon.NewServer(runner).Handler())
 }
@@ -102,6 +106,7 @@ func runRepl() error {
 	if err != nil {
 		return err
 	}
+	defer runner.Close()
 	if !isatty.IsTerminal(os.Stdin.Fd()) && !isatty.IsCygwinTerminal(os.Stdin.Fd()) {
 		if cfg.APIKey == "" && !localEndpoint(cfg.BaseURL) {
 			return fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json")
@@ -230,10 +235,17 @@ func buildRunner(workspace, data string, llm client.LLMClient) (*daemon.Runner, 
 	if err != nil {
 		return nil, err
 	}
+	reg, cleanup, err := tools.RegisterAll(cfg)
+	if err != nil {
+		return nil, err
+	}
 	return &daemon.Runner{
-		Cfg:      cfg,
-		LLM:      llm,
-		Sessions: store,
+		Cfg:        cfg,
+		LLM:        llm,
+		Sessions:   store,
+		Tools:      reg,
+		MCPContext: mcp.BuildContext(cfg.MCPServers),
+		Cleanup:    cleanup,
 	}, nil
 }
 

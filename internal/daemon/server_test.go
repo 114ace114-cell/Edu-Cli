@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kocoro/skeleton/internal/client"
-	"github.com/kocoro/skeleton/internal/config"
-	"github.com/kocoro/skeleton/internal/session"
+	"github.com/kocoro/edu-cli/internal/client"
+	"github.com/kocoro/edu-cli/internal/config"
+	"github.com/kocoro/edu-cli/internal/session"
 )
 
 func testServer(t *testing.T, llm client.LLMClient) *httptest.Server {

@@ -1,10 +1,10 @@
 package daemon
 
 import (
-	"github.com/kocoro/skeleton/internal/agent"
-	"github.com/kocoro/skeleton/internal/client"
-	"github.com/kocoro/skeleton/internal/config"
-	"github.com/kocoro/skeleton/internal/session"
+	"github.com/kocoro/edu-cli/internal/agent"
+	"github.com/kocoro/edu-cli/internal/client"
+	"github.com/kocoro/edu-cli/internal/config"
+	"github.com/kocoro/edu-cli/internal/session"
 )
 
 // Request is the body of POST /message.
@@ -22,9 +22,19 @@ type Result struct {
 
 // Runner executes one request and persists the transcript.
 type Runner struct {
-	Cfg      config.Config
-	LLM      client.LLMClient
-	Sessions *session.Store
+	Cfg        config.Config
+	LLM        client.LLMClient
+	Sessions   *session.Store
+	Tools      *agent.ToolRegistry
+	MCPContext string
+	Cleanup    func()
+}
+
+// Close disconnects MCP servers started for this runner.
+func (r *Runner) Close() {
+	if r != nil && r.Cleanup != nil {
+		r.Cleanup()
+	}
 }
 
 func (r *Runner) RunAgent(req Request) (Result, error) {
@@ -34,8 +44,11 @@ func (r *Runner) RunAgent(req Request) (Result, error) {
 		return Result{}, err
 	}
 	loop := &agent.Loop{
-		LLM:   r.LLM,
-		Model: r.Cfg.Model,
+		LLM:        r.LLM,
+		Model:      r.Cfg.Model,
+		Tools:      r.Tools,
+		MCPContext: r.MCPContext,
+		Workspace:  r.Cfg.Workspace,
 	}
 	reply, err := loop.Run(req.Text, sess.Messages)
 	sess.Messages = loop.Messages
