@@ -21,7 +21,7 @@ type Config struct {
 }
 
 // Load reads dataDir/config.json when it exists. An empty dataDir is
-// <workspace>/data, which is where `edu run` looks. Environment wins over the file.
+// <workspace>/data. Environment wins over the file.
 func Load(dataDir, workspace string) (Config, error) {
 	cfg := Config{
 		Model:   "gpt-4o-mini",

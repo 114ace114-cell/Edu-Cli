@@ -3,7 +3,7 @@
 Local CLI and HTTP daemon: chat with an OpenAI-compatible model, run tools and MCP, and save transcripts under `data/`.
 
 ```
-edu run / edu daemon
+edu repl / edu daemon
   -> config
   -> daemon router + runner
   -> agent loop (tools + MCP)
@@ -16,13 +16,13 @@ edu run / edu daemon
 go test ./...
 ```
 
-`go run .` and `go run . repl` open the full-screen home view: brand mark, tips, recent sessions, a connected line, and the composer. A pipe falls back to a line reader. `?` lists commands. Ctrl+C twice quits. The root `main.go` only calls `cmd.Execute`.
+`go run .` and `go run . repl` open the full-screen home view: brand mark, tips, recent sessions, a connected line, and the composer. A pipe falls back to a line reader. Use `/sessions` to pick a saved chat, `/session new`, or `/session resume <# or id>`. `?` lists commands. Ctrl+C twice quits. Sessions live in `data/sessions/*.json`. The root `main.go` only calls `cmd.Execute`.
 
 Live model:
 
 ```bash
 set OPENAI_API_KEY=sk-...
-go run . run "summarize README.md"
+go run .
 go run . daemon
 ```
 

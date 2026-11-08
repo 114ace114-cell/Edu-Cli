@@ -5,7 +5,7 @@ import "fmt"
 // RouteKey is the sticky lane for a request.
 // The full function is daemon.ComputeRouteKey: pinned schedule, session id,
 // thread, sender, agent, then channel. This skeleton keeps the session pin,
-// which is the rule one-shot and HTTP resume share.
+// which is the rule TUI and HTTP resume share.
 func RouteKey(sessionID string) string {
 	if sessionID == "" {
 		return "new"

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,9 +19,20 @@ import (
 type Session struct {
 	ID        string           `json:"id"`
 	RouteKey  string           `json:"route_key"`
+	Title     string           `json:"title,omitempty"`
+	CWD       string           `json:"cwd,omitempty"`
 	Messages  []client.Message `json:"messages"`
 	CreatedAt time.Time        `json:"created_at"`
 	UpdatedAt time.Time        `json:"updated_at"`
+}
+
+// SessionSummary is one row for /sessions and the session picker.
+type SessionSummary struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	MsgCount  int       `json:"msg_count"`
 }
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -78,6 +90,48 @@ func (s *Store) Save(sess *Session) error {
 	return os.Rename(tmp, path)
 }
 
+// ListSummaries returns sessions sorted by UpdatedAt, newest first.
+func (s *Store) ListSummaries() ([]SessionSummary, error) {
+	ids, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionSummary, 0, len(ids))
+	for _, id := range ids {
+		sess, err := s.Load(id)
+		if err != nil {
+			continue
+		}
+		out = append(out, SessionSummary{
+			ID:        sess.ID,
+			Title:     DisplayTitle(sess),
+			CreatedAt: sess.CreatedAt,
+			UpdatedAt: sess.UpdatedAt,
+			MsgCount:  len(sess.Messages),
+		})
+	}
+	sortSessionSummaries(out)
+	return out, nil
+}
+
+func sortSessionSummaries(items []SessionSummary) {
+	for i := 1; i < len(items); i++ {
+		j := i
+		for j > 0 && items[j].UpdatedAt.After(items[j-1].UpdatedAt) {
+			items[j], items[j-1] = items[j-1], items[j]
+			j--
+		}
+	}
+}
+
+// Delete removes a session file.
+func (s *Store) Delete(id string) error {
+	if !ValidID(id) || id == "" {
+		return fmt.Errorf("invalid session id")
+	}
+	return os.Remove(s.path(id))
+}
+
 func (s *Store) Load(id string) (*Session, error) {
 	raw, err := os.ReadFile(s.path(id))
 	if err != nil {
@@ -113,7 +167,7 @@ func (s *Store) Recent(limit int) ([]Summary, error) {
 			continue
 		}
 		out = append(out, Summary{
-			Title:     sessionTitle(sess),
+			Title:     DisplayTitle(sess),
 			UpdatedAt: sess.UpdatedAt,
 			MsgCount:  len(sess.Messages),
 		})
@@ -125,8 +179,36 @@ func (s *Store) Recent(limit int) ([]Summary, error) {
 	return out, nil
 }
 
-func sessionTitle(sess *Session) string {
-	for _, m := range sess.Messages {
+// DisplayTitle returns the stored title or derives one from the first user message.
+func DisplayTitle(sess *Session) string {
+	if sess == nil {
+		return "New session"
+	}
+	if t := strings.TrimSpace(sess.Title); t != "" && t != "New session" {
+		r := []rune(t)
+		if len(r) > 48 {
+			return string(r[:48]) + "..."
+		}
+		return t
+	}
+	return titleFromMessages(sess.Messages, sess.ID)
+}
+
+// TitleFromUserLine trims a compose line for use as session title.
+func TitleFromUserLine(text string) string {
+	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+	if text == "" {
+		return ""
+	}
+	r := []rune(text)
+	if len(r) > 48 {
+		return string(r[:48]) + "..."
+	}
+	return text
+}
+
+func titleFromMessages(msgs []client.Message, fallbackID string) string {
+	for _, m := range msgs {
 		if m.Role != "user" {
 			continue
 		}
@@ -140,8 +222,8 @@ func sessionTitle(sess *Session) string {
 		}
 		return text
 	}
-	if sess.ID != "" {
-		return sess.ID
+	if fallbackID != "" {
+		return fallbackID
 	}
 	return "New session"
 }

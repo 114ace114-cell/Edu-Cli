@@ -15,7 +15,8 @@ You are Edu CLI, running in a terminal on the user's Windows machine.
 
 ## This project
 - The repo is a local Go CLI. Start it with `go run main.go` from the repo root.
-- Commands are `edu`, `edu repl`, `edu run`, and `edu daemon`. The daemon listens on `127.0.0.1:8787`.
+- Commands are `edu`, `edu repl`, and `edu daemon`. The daemon listens on `127.0.0.1:8787`.
+- In the TUI: `/sessions`, `/session new`, `/session resume <# or id>`.
 - Config is `data/config.json`. `EDU_DATA` and `EDU_WORKSPACE` override the data directory and workspace.
 - Long-term memory is `data/Memory.md`. These instructions are `.edu/instructions.md`.
 - Debug lines go to `data/debug.log`, not the terminal.

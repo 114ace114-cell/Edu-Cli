@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,12 +11,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/kocoro/edu-cli/internal/session"
 )
 
 const (
 	stateStartup = iota
 	stateInput
 	stateProcessing
+	stateSessionPicker
 )
 
 const inputBorderOverhead = 3
@@ -35,6 +38,8 @@ type Options struct {
 	Version   string
 	Connected bool
 	Activity  []Activity
+	// Sessions is the Kocoro-style session harness (picker, resume, save).
+	Sessions *session.Manager
 	// Submit runs one turn and returns the assistant reply.
 	Submit func(text string) (string, error)
 	// Models lists DeepSeek ids plus any local Ollama tags. Nil means DeepSeek only.
@@ -64,10 +69,13 @@ type Model struct {
 	ctrlCArmed bool
 	viewport   viewport.Model
 	textarea   textarea.Model
-	history    string
-	spin       int
-	started    time.Time
-	sessionID  string
+	history           string
+	baseHeader        string
+	spin              int
+	started           time.Time
+	lastUserInput     string
+	lastSessions      []session.SessionSummary
+	sessionPickerIdx  int
 }
 
 // Start opens the full-screen CLI. The line reader in Run stays for pipes.
@@ -153,6 +161,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.append(wrapReply(msg.reply, m.width))
 		}
 		m.append("")
+		m.persistSessionAfterTurn()
 		return m, textarea.Blink
 	case tea.KeyMsg:
 		if m.state == stateStartup && msg.Type != tea.KeyCtrlC {
@@ -165,6 +174,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			if m.state == stateStartup || m.ctrlCArmed {
+				m.saveSessions()
 				return m, tea.Quit
 			}
 			m.ctrlCArmed = true
@@ -173,6 +183,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.help {
 				m.help = false
 				m.relayout()
+			}
+			return m, nil
+		}
+		if m.state == stateSessionPicker {
+			switch msg.Type {
+			case tea.KeyUp:
+				m.sessionPickerIdx--
+				if m.sessionPickerIdx < 0 {
+					m.sessionPickerIdx = len(m.lastSessions) - 1
+				}
+				return m, nil
+			case tea.KeyDown:
+				m.sessionPickerIdx++
+				if m.sessionPickerIdx >= len(m.lastSessions) {
+					m.sessionPickerIdx = 0
+				}
+				return m, nil
+			case tea.KeyEnter:
+				if len(m.lastSessions) > 0 {
+					id := m.lastSessions[m.sessionPickerIdx].ID
+					if sess, err := m.opt.Sessions.Resume(id); err != nil {
+						m.append(styleError().Render("  "+err.Error()) + "\n")
+					} else {
+						m.loadSessionHistory(sess)
+					}
+				}
+				m.state = stateInput
+				m.relayout()
+				return m, textarea.Blink
+			case tea.KeyEsc:
+				m.state = stateInput
+				m.relayout()
+				return m, nil
 			}
 			return m, nil
 		}
@@ -194,7 +237,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if text == "exit" || text == "quit" {
+				m.saveSessions()
 				return m, tea.Quit
+			}
+			if strings.HasPrefix(text, "/") {
+				if text == "/quit" || text == "/exit" {
+					m.saveSessions()
+					return m, tea.Quit
+				}
+				if m.handleSlashCommand(text) {
+					return m, nil
+				}
 			}
 			if text == "?" || text == "/help" || text == "help" {
 				m.help = true
@@ -209,6 +262,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.help = false
+			m.lastUserInput = text
 			m.append(renderUserMessage(text, m.width))
 			m.append("")
 			m.state = stateProcessing
@@ -347,6 +401,7 @@ func (m *Model) finishHeader() tea.Cmd {
 	}
 	b.WriteString("\n")
 	m.history = b.String()
+	m.baseHeader = m.history
 	m.viewport.SetContent(m.history)
 	m.viewport.GotoBottom()
 	m.relayout()
@@ -383,18 +438,40 @@ func (m *Model) View() string {
 		return lipgloss.NewStyle().Width(m.width).Height(m.height).MaxHeight(m.height).Render(
 			renderStartupHeader(m.frame, m.width, m.opt.Version, m.modelLabel(), m.opt.Endpoint, m.opt.CWD, m.opt.Activity, m.tipIdx, m.opt.Agent))
 	}
-	return m.viewport.View() + "\n" + m.bottomRegion()
+	out := m.viewport.View()
+	if m.state == stateSessionPicker {
+		var sb strings.Builder
+		sb.WriteString(styleDim().Render("  Sessions (↑↓, Enter, Esc)"))
+		sb.WriteString("\n")
+		sb.WriteString(renderDropList(dropListSize, len(m.lastSessions), m.sessionPickerIdx, func(i int) (string, string) {
+			s := m.lastSessions[i]
+			title := s.Title
+			if len(title) > 28 {
+				title = title[:25] + "..."
+			}
+			when := s.UpdatedAt
+			if when.IsZero() {
+				when = s.CreatedAt
+			}
+			desc := fmt.Sprintf("%s · %d msgs", when.Format("Jan 02 15:04"), s.MsgCount)
+			return title, desc
+		}))
+		out += "\n" + sb.String()
+	}
+	return out + "\n" + m.bottomRegion()
 }
 
 func (m *Model) bottomRegion() string {
 	var sb strings.Builder
 	if m.help && m.state == stateInput {
-		sb.WriteString(styleDim().Render("  ? toggle commands    PgUp/PgDn scroll    exit leave    Ctrl+C twice quit"))
+		sb.WriteString(styleDim().Render("  ? commands  /sessions resume  PgUp/PgDn scroll  exit quit  Ctrl+C twice"))
 		sb.WriteString("\n")
 	}
 	switch m.state {
 	case stateProcessing:
 		sb.WriteString(renderInputBox(styleDim().Render("> "), m.width))
+	case stateSessionPicker:
+		sb.WriteString(styleDim().Render("  ↑↓ choose · Enter resume · Esc cancel"))
 	default:
 		sb.WriteString(renderInputBox(m.textarea.View(), m.width))
 	}
@@ -461,6 +538,113 @@ func wrapReply(text string, width int) string {
 		width = 8
 	}
 	return ansi.Wrap(text, width, " ")
+}
+
+func (m *Model) saveSessions() {
+	if m.opt.Sessions != nil {
+		_ = m.opt.Sessions.Save()
+	}
+}
+
+func (m *Model) persistSessionAfterTurn() {
+	if m.opt.Sessions == nil {
+		return
+	}
+	_ = m.opt.Sessions.RefreshCurrent()
+	cur := m.opt.Sessions.Current()
+	if cur != nil && cur.Title == "New session" && m.lastUserInput != "" {
+		if t := session.TitleFromUserLine(m.lastUserInput); t != "" {
+			cur.Title = t
+		}
+	}
+	_ = m.opt.Sessions.Save()
+}
+
+func (m *Model) handleSlashCommand(input string) bool {
+	if m.opt.Sessions == nil {
+		return false
+	}
+	parts := strings.Fields(input)
+	cmd := parts[0]
+	switch cmd {
+	case "/clear":
+		m.history = m.baseHeader
+		m.viewport.SetContent(m.history)
+		m.viewport.GotoBottom()
+		return true
+	case "/sessions":
+		list, err := m.opt.Sessions.List()
+		if err != nil {
+			m.append(styleError().Render("  "+err.Error()) + "\n")
+			return true
+		}
+		if len(list) == 0 {
+			m.append("  No saved sessions\n")
+			return true
+		}
+		m.lastSessions = list
+		m.sessionPickerIdx = 0
+		m.state = stateSessionPicker
+		m.relayout()
+		return true
+	case "/session":
+		if len(parts) < 2 {
+			m.append("  Usage: /session new | /session resume <# or id>\n")
+			return true
+		}
+		switch parts[1] {
+		case "new":
+			if _, err := m.opt.Sessions.NewSession(); err != nil {
+				m.append(styleError().Render("  "+err.Error()) + "\n")
+				return true
+			}
+			m.history = m.baseHeader
+			m.append("  Started new session\n")
+			m.viewport.SetContent(m.history)
+			m.viewport.GotoBottom()
+			return true
+		case "resume":
+			if len(parts) < 3 {
+				m.append("  Usage: /session resume <number or id>\n")
+				return true
+			}
+			target := parts[2]
+			var sess *session.Session
+			var err error
+			if n, perr := strconv.Atoi(target); perr == nil {
+				sess, err = m.opt.Sessions.ResumeByListIndex(n)
+			} else {
+				sess, err = m.opt.Sessions.Resume(target)
+			}
+			if err != nil {
+				m.append(styleError().Render("  "+err.Error()) + "\n")
+				return true
+			}
+			m.loadSessionHistory(sess)
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) loadSessionHistory(sess *session.Session) {
+	if sess == nil {
+		return
+	}
+	m.history = m.baseHeader
+	m.append(styleDim().Render(fmt.Sprintf("  Session: %s", session.DisplayTitle(sess))))
+	m.append("")
+	for _, msg := range session.MessagesForDisplay(sess.Messages) {
+		switch msg.Role {
+		case "user":
+			m.append(renderUserMessage(msg.Content, m.width))
+		case "assistant":
+			m.append(wrapReply(msg.Content, m.width))
+			m.append("")
+		}
+	}
+	m.viewport.SetContent(m.history)
+	m.viewport.GotoBottom()
 }
 
 func renderUserMessage(text string, width int) string {

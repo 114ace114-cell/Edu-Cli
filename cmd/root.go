@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,14 +34,6 @@ func Execute() {
 		if err := runDaemon(addr); err != nil {
 			fail(err)
 		}
-	case "run":
-		task := strings.TrimSpace(strings.Join(args[1:], " "))
-		if task == "" {
-			fail(fmt.Errorf("usage: edu run <task>"))
-		}
-		if err := runTask(task); err != nil {
-			fail(err)
-		}
 	case "", "repl":
 		if err := runRepl(); err != nil {
 			fail(err)
@@ -48,10 +41,7 @@ func Execute() {
 	case "-h", "--help", "help":
 		usage()
 	default:
-		task := strings.TrimSpace(strings.Join(args, " "))
-		if err := runTask(task); err != nil {
-			fail(err)
-		}
+		fail(fmt.Errorf("unknown command %q (try edu --help)", name))
 	}
 }
 
@@ -59,27 +49,12 @@ func usage() {
 	fmt.Println(`Edu CLI
 
   edu                      full-screen session (same as edu repl)
-  edu run <task>           one-shot task with the configured model
   edu daemon [--addr h:p]  HTTP API on 127.0.0.1:8787
   edu repl                 full-screen session
 
-Set OPENAI_API_KEY, or api_key in data/config.json, for run, daemon, and repl.
+Set OPENAI_API_KEY, or api_key in data/config.json, for daemon and repl.
 A local endpoint (localhost or port 11434) does not need a key.
 EDU_DATA holds sessions and config.`)
-}
-
-func runTask(task string) error {
-	runner, err := liveRunner()
-	if err != nil {
-		return err
-	}
-	defer runner.Close()
-	result, err := runner.RunAgent(daemon.Request{Text: task})
-	if err != nil {
-		return err
-	}
-	fmt.Printf("session: %s\n%s\n", result.SessionID, result.Reply)
-	return nil
 }
 
 func runDaemon(addr string) error {
@@ -111,14 +86,17 @@ func runRepl() error {
 		if cfg.APIKey == "" && !localEndpoint(cfg.BaseURL) {
 			return fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json")
 		}
-		return lineRepl(runner)
+		return lineRepl(runner, cfg)
+	}
+	mgr := session.NewManager(runner.Sessions)
+	if _, err := mgr.NewSession(); err != nil {
+		return err
 	}
 	recent, _ := runner.Sessions.Recent(1)
 	activity := make([]tui.Activity, 0, len(recent))
 	for _, row := range recent {
 		activity = append(activity, tui.Activity{Title: row.Title, When: row.UpdatedAt, Msgs: row.MsgCount})
 	}
-	var sessionID string
 	return tui.Start(tui.Options{
 		Agent:     "default",
 		Model:     cfg.Model,
@@ -127,6 +105,7 @@ func runRepl() error {
 		Version:   "dev",
 		Connected: endpointReachable(cfg.BaseURL),
 		Activity:  activity,
+		Sessions:  mgr,
 		Models: func() []tui.ModelChoice {
 			rows := make([]tui.ModelChoice, 0, 8)
 			for _, m := range client.DeepSeekModels() {
@@ -144,10 +123,11 @@ func runRepl() error {
 			if cfg.APIKey == "" && !localEndpoint(cfg.BaseURL) {
 				return "", fmt.Errorf("set OPENAI_API_KEY or api_key in data/config.json")
 			}
-			result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: sessionID})
-			if result.SessionID != "" {
-				sessionID = result.SessionID
+			id := ""
+			if cur := mgr.Current(); cur != nil {
+				id = cur.ID
 			}
+			result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: id})
 			if err != nil {
 				return "", err
 			}
@@ -156,16 +136,59 @@ func runRepl() error {
 	})
 }
 
-func lineRepl(runner *daemon.Runner) error {
-	var sessionID string
+func lineRepl(runner *daemon.Runner, cfg config.Config) error {
+	mgr := session.NewManager(runner.Sessions)
+	if _, err := mgr.NewSession(); err != nil {
+		return err
+	}
 	return tui.Run(os.Stdin, os.Stdout, func(text string) (string, error) {
-		result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: sessionID})
-		if result.SessionID != "" {
-			sessionID = result.SessionID
+		if strings.HasPrefix(text, "/") {
+			switch strings.Fields(text)[0] {
+			case "/session":
+				parts := strings.Fields(text)
+				if len(parts) >= 2 && parts[1] == "new" {
+					if _, err := mgr.NewSession(); err != nil {
+						return "", err
+					}
+					return "Started new session", nil
+				}
+				if len(parts) >= 3 && parts[1] == "resume" {
+					target := parts[2]
+					var sess *session.Session
+					var err error
+					if n, perr := strconv.Atoi(target); perr == nil {
+						sess, err = mgr.ResumeByListIndex(n)
+					} else {
+						sess, err = mgr.Resume(target)
+					}
+					if err != nil {
+						return "", err
+					}
+					return fmt.Sprintf("Resumed session %s (%d messages)", session.DisplayTitle(sess), len(sess.Messages)), nil
+				}
+				return "Usage: /session new | /session resume <# or id>", nil
+			}
 		}
+		id := ""
+		if cur := mgr.Current(); cur != nil {
+			id = cur.ID
+		}
+		result, err := runner.RunAgent(daemon.Request{Text: text, SessionID: id})
 		if err != nil {
 			return "", err
 		}
+		if cur := mgr.Current(); cur != nil && cur.Title == "New session" {
+			if t := session.TitleFromUserLine(text); t != "" {
+				cur.Title = t
+			}
+		}
+		_ = mgr.RefreshCurrent()
+		if cur := mgr.Current(); cur != nil && cur.Title == "New session" {
+			if t := session.TitleFromUserLine(text); t != "" {
+				cur.Title = t
+			}
+		}
+		_ = mgr.Save()
 		return result.Reply, nil
 	})
 }
